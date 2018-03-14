@@ -1,5 +1,5 @@
 /**
- *  Rainforest Eagle - Device handler, requires Rainforest Eagle Manager
+ *  Rainforest Eagle - Device handler, requires Rainforest Eagle Service Manager
  *
  *
  *  heavily adapted from wattvision device type
@@ -27,30 +27,46 @@ metadata {
 		capability "Sensor"
         
         attribute "lastUpdated", "String"
+        attribute "price", "string"
 	}
 
-	tiles {
+	tiles(scale:2) {
 
-		valueTile("power", "device.power", width: 2, height: 2) {
+        valueTile("mainPower", "device.power", width: 0, height: 0) {
 			state "default", label: '${currentValue} kW'
 		}
 
-		standardTile("refresh", "device.power", inactiveLabel: true, decoration: "flat") {
+		valueTile("power", "device.power", width: 6, height: 2) {
+			state "default", label: 'Current Demand\n\r${currentValue} kW'
+		}
+
+        valueTile("price", "device.price", width: 6, height: 2) {
+			state "default", label: 'Est. Cost per hour\n\r${currentValue} c'
+		}
+
+		standardTile("refresh", "capability.refresh", width: 2, height: 2, inactiveLabel: true, decoration: "flat") {
 			state "default", label: '', action: "refresh.refresh", icon: "st.secondary.refresh"
 		}
         
-        valueTile("lastUpdated", "device.lastUpdated", width: 1, height: 1, decoration: "flat") {
-        	state "default", label:'${currentValue}'
+        valueTile("lastUpdated", "device.lastUpdated", width: 4, height: 2, decoration: "flat") {
+        	state "default", label:'Last Update\n\r${currentValue}'
 	    }
 
-		main "power"
-		details(["power", "refresh", "lastUpdated"])
+		main "mainPower"
+        
+		details(["mainPower", "power", "price", "lastUpdated", "refresh"])
 
 	}
 }
 
-def refreshCallback(response) {
-	log.debug "refresh response"
+def refresh() {
+	log.debug "refresh()"
+    
+    instantaneousDemand()
+}
+
+def instantaneousDemandCallback(response) {
+	log.debug "instantaneousDemand response"
     //log.debug response.headers
     
     log.debug "status: ${response?.status}"
@@ -61,16 +77,15 @@ def refreshCallback(response) {
     
     if(success) {
     	def json = parseJson(response.body)
-		addEagleData(json)
+		addInstDemandData(json)
     } else {
     	error()
     }
     
 }
 
-def refresh() {
-	log.debug "refresh()"
-    
+def instantaneousDemand(){
+
     def settings = parent.getSettings(this)
     //log.debug "settings"
     //log.debug settings
@@ -100,11 +115,11 @@ def refresh() {
             ],
             body: xmlBody],
             device.deviceNetworkId,
-            [callback: refreshCallback]
+            [callback: instantaneousDemandCallback]
         )
         //log.debug "hubAction"
         //log.trace hubAction
-        log.debug "sending request"
+        log.debug "sending get_instantaneous_demand request"
         sendHubCommand(hubAction)
     }
     catch (Exception e) {
@@ -112,14 +127,77 @@ def refresh() {
     }
 }
 
+def getPriceCallback(response) {
+	log.debug "getPrice response"
+    //log.debug response.headers
+    
+    log.debug "status: ${response?.status}"
+    
+    def successCodes = ["200","201","202"]
+	boolean success = successCodes.findAll{response?.status?.toString().contains(it)}
+    log.debug "success: $success"
+    
+    if(success) {
+    	def json = parseJson(response.body)
+		addGetPriceData(json)
+    } else {
+    	error()
+    }
+    
+}
+
+def getPrice(){
+
+    def settings = parent.getSettings(this)
+    //log.debug "settings"
+    //log.debug settings
+    
+    def address = settings.theAddr
+    def macId = settings.macId
+    def instCode = settings.instCode
+    
+    def pre = "${settings.cloudId}:${settings.instCode}"
+    def encoded = pre.bytes.encodeBase64()
+    
+    def xmlBody = """<Command>
+    <Name>get_price</Name>
+    <MacId>0x${settings.macId}</MacId>
+    <Format>JSON</Format>
+    </Command>"""
+
+    try {
+    
+        def hubAction = new physicalgraph.device.HubAction([
+            method: "POST",
+            path: "/cgi-bin/post_manager",
+            headers: [
+                HOST: address,
+                "authorization": "Basic $encoded",
+                "Content-Type": "application/xml"
+            ],
+            body: xmlBody],
+            device.deviceNetworkId,
+            [callback: getPriceCallback]
+        )
+        //log.debug "hubAction"
+        //log.trace hubAction
+        log.debug "sending get_price request"
+        sendHubCommand(hubAction)
+    }
+    catch (Exception e) {
+        log.debug "Hit Exception $e on $hubAction"
+    }
+}
+
+
 // parse events into attributes
 def parse(String description) {
 	log.debug "Parsing '${description}'"
 }
 
-public addEagleData(json) {
+public addInstDemandData(json) {
 
-	log.trace "Adding data from Eagle"
+	log.trace "Adding data from Eagle for Instantaneous Demand"
 
     def data = json.InstantaneousDemand
     
@@ -141,6 +219,25 @@ public addEagleData(json) {
         //isStateChange: true
     ]
     sendEvent(timeData)
+
+    getPrice()
+
+}
+
+public addGetPriceData(json) {
+
+	log.trace "Adding data from Eagle for Get Price"
+
+    def data = json.PriceCluster
+    
+    int price = convertHexToInt(data.Price)
+    int trailingDigits = convertHexToInt(data.TrailingDigits)
+    def currentPower = device.currentValue("power")
+    
+    Double priceValue = ((price / (10**trailingDigits))*100)*currentPower
+    
+    
+    sendEvent(name: "price", value: priceValue.round(1))
 
 }
 
