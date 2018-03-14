@@ -3,4 +3,4 @@
 Requires rainforest-manager
 rainforest-manager.src
 
- * Added use of insallcode for authentication
+ * Added use of install code for authentication
