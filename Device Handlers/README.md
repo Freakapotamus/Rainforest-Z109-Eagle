@@ -1,6 +1,5 @@
 # Rainforest Eagle Device Handler
 
-Requires rainforest-manager
-rainforest-manager.src
+requires Rainforest Eagle Service Manager
 
  * Added use of install code for authentication

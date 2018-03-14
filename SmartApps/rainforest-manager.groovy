@@ -5,7 +5,7 @@
  *  heavily adapted from wattvision manager
  *  https://github.com/SmartThingsCommunity/SmartThingsPublic/blob/master/smartapps/smartthings/wattvision-manager.src/wattvision-manager.groovy
  *
- *  adapted from Rainforest Eagle Manager - service manager
+ *  adapted from Rainforest Eagle Manager - Service Manager
  *  https://github.com/augoisms/smartthings/tree/master/smartapps/augoisms/rainforest-manager.src
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
