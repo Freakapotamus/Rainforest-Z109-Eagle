@@ -1,11 +1,11 @@
 /**
  *  Rainforest Eagle - Device handler, requires Rainforest Eagle Manager
  *
- *  Copyright 2017 Justin Walker
  *
  *  heavily adapted from wattvision device type
  *  https://github.com/SmartThingsCommunity/SmartThingsPublic/blob/master/devicetypes/smartthings/wattvision.src/wattvision.groovy
- *  heavily adapted from ainforest Eagle - Device handler
+ *
+ *  adapted from Rainforest Eagle - Device handler
  *  https://github.com/augoisms/smartthings/tree/master/devicetypes/augoisms/rainforest-handler.src
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
