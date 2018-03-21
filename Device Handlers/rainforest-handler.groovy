@@ -18,6 +18,7 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  */
+ import java.text.SimpleDateFormat
 
 metadata {
 
@@ -28,6 +29,12 @@ metadata {
         
         attribute "lastUpdated", "String"
         attribute "price", "string"
+
+        // Energy Used
+        attribute "meterFromGridTotal", "number"
+        attribute "meterDailyEnergyUsedTotal", "number"
+        attribute "meterLastEnergyUsed", "number"
+        attribute "dayOfWeek", "number"
 	}
 
 	tiles(scale:2) {
@@ -52,9 +59,13 @@ metadata {
         	state "default", label:'Last Update\n\r${currentValue}'
 	    }
 
+        valueTile("meterDailyEnergyUsedTotal", "device.meterDailyEnergyUsedTotal", width: 6, height: 2) {
+			state "default", label: 'Todays Usage\n\r${currentValue} kWh'
+		}
+
 		main "mainPower"
         
-		details(["mainPower", "power", "price", "lastUpdated", "refresh"])
+		details(["mainPower", "power", "price", "meterDailyEnergyUsedTotal", "lastUpdated", "refresh"])
 
 	}
 }
@@ -62,18 +73,17 @@ metadata {
 def refresh() {
 	log.debug "refresh()"
     
+    //Call get_instantaneous_demand
     instantaneousDemand()
 }
 
 def instantaneousDemandCallback(response) {
-	log.debug "instantaneousDemand response"
-    //log.debug response.headers
     
-    log.debug "status: ${response?.status}"
+    log.debug "instantaneousDemand response status: ${response?.status}"
     
     def successCodes = ["200","201","202"]
 	boolean success = successCodes.findAll{response?.status?.toString().contains(it)}
-    log.debug "success: $success"
+    //log.debug "success: $success"
     
     if(success) {
     	def json = parseJson(response.body)
@@ -87,8 +97,6 @@ def instantaneousDemandCallback(response) {
 def instantaneousDemand(){
 
     def settings = parent.getSettings(this)
-    //log.debug "settings"
-    //log.debug settings
     
     def address = settings.theAddr
     def macId = settings.macId
@@ -128,14 +136,12 @@ def instantaneousDemand(){
 }
 
 def getPriceCallback(response) {
-	log.debug "getPrice response"
-    //log.debug response.headers
     
-    log.debug "status: ${response?.status}"
+    log.debug "getPrice response status: ${response?.status}"
     
     def successCodes = ["200","201","202"]
 	boolean success = successCodes.findAll{response?.status?.toString().contains(it)}
-    log.debug "success: $success"
+    //log.debug "success: $success"
     
     if(success) {
     	def json = parseJson(response.body)
@@ -149,8 +155,6 @@ def getPriceCallback(response) {
 def getPrice(){
 
     def settings = parent.getSettings(this)
-    //log.debug "settings"
-    //log.debug settings
     
     def address = settings.theAddr
     def macId = settings.macId
@@ -190,14 +194,12 @@ def getPrice(){
 }
 
 def getCurrentSummationCallback(response) {
-	log.debug "get_current_summation response"
-    //log.debug response.headers
-    
-    log.debug "status: ${response?.status}"
+	
+    log.debug "getCurrentSummation response status: ${response?.status}"
     
     def successCodes = ["200","201","202"]
 	boolean success = successCodes.findAll{response?.status?.toString().contains(it)}
-    log.debug "success: $success"
+    //log.debug "success: $success"
     
     if(success) {
     	def json = parseJson(response.body)
@@ -211,8 +213,6 @@ def getCurrentSummationCallback(response) {
 def getCurrentSummation(){
 
     def settings = parent.getSettings(this)
-    //log.debug "settings"
-    //log.debug settings
     
     def address = settings.theAddr
     def macId = settings.macId
@@ -282,6 +282,7 @@ public addInstDemandData(json) {
     ]
     sendEvent(timeData)
 
+    //Call get_price
     getPrice()
 
 }
@@ -301,6 +302,7 @@ public addGetPriceData(json) {
     
     sendEvent(name: "price", value: priceValue.round(1))
 
+    //Call get_current_summation
     getCurrentSummation()
 
 }
@@ -317,14 +319,65 @@ public addGetCurrentSummationData(json) {
 
     Double fromGrid = summationDelivered * multiplier / divisor
 
-    log.debug "Current Summation Delivered $fromGrid kWH"
+    //log.debug "Current Summation Delivered $fromGrid kWh"
+
+    // Calculate Energy Usage
+    calculateEnergyUsed(fromGrid)
    
+}
+
+public calculateEnergyUsed(grid){
+
+    Date todayDate = new Date()
+	def todayDay = new Date().format("dd",location.timeZone)
+    int todayDayInt =  Integer.parseInt(todayDay)
+    def currentDay = device.currentValue("dayOfWeek")
+    def fromGridTotal = device.currentValue("meterFromGridTotal")
+    def dailyEnergyUsedTotal = device.currentValue("meterDailyEnergyUsedTotal")
+    
+
+    // if dayOfWeek is empty
+    if (currentDay == 0){
+        sendEvent(name: "dayOfWeek", value: todayDayInt)
+        currentDay = todayDayInt
+        log.debug "dayOfWeek is 0"
+    }
+
+    // if meterFromGridTotal is less than grid
+    if (fromGridTotal > grid ){
+        sendEvent(name: "meterFromGridTotal", value: grid)
+        fromGridTotal = grid
+        log.debug "Error - meterFromGridTotal:$fromGridTotal is less than grid:$grid "
+    }
+
+    //new day
+    if (currentDay != todayDayInt ){
+        sendEvent(name: "meterDailyEnergyUsedTotal", value: 0)
+        dailyEnergyUsedTotal = 0
+        sendEvent(name: "dayOfWeek", value: todayDayInt)
+        log.debug "New Day - currentDay: $currentDay, todayDayInt: $todayDayInt"
+    }
+
+    //calculate the energy used since last read
+    Double lastEnergyUsed = grid - fromGridTotal
+    
+    sendEvent(name: "meterLastEnergyUsed", value: lastEnergyUsed)
+    sendEvent(name: "meterFromGridTotal", value: grid)
+
+    //calculate daily total
+    dailyEnergyUsedTotal = dailyEnergyUsedTotal + lastEnergyUsed
+
+    sendEvent(name: "meterDailyEnergyUsedTotal", value: dailyEnergyUsedTotal.round(3))
+
+    //log.debug "dayOfWeek: $currentDay, meterFromGridTotal: $fromGridTotal, meterDailyEnergyUsedTotal: $dailyEnergyUsedTotal"
+
 }
 
 public error() {
 	// there was an error retrieving data
     // clear out the value
-    sendPowerEvent(new Date(), '---', 'W', true)    
+    sendPowerEvent(new Date(), '---', 'W', true)
+    log.debug "Error retrieving data"    
 }
 
 private sendPowerEvent(time, value, units, isLatest = false) {
