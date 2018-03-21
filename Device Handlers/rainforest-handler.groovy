@@ -189,6 +189,68 @@ def getPrice(){
     }
 }
 
+def getCurrentSummationCallback(response) {
+	log.debug "get_current_summation response"
+    //log.debug response.headers
+    
+    log.debug "status: ${response?.status}"
+    
+    def successCodes = ["200","201","202"]
+	boolean success = successCodes.findAll{response?.status?.toString().contains(it)}
+    log.debug "success: $success"
+    
+    if(success) {
+    	def json = parseJson(response.body)
+		addGetCurrentSummationData(json)
+    } else {
+    	error()
+    }
+    
+}
+
+def getCurrentSummation(){
+
+    def settings = parent.getSettings(this)
+    //log.debug "settings"
+    //log.debug settings
+    
+    def address = settings.theAddr
+    def macId = settings.macId
+    def instCode = settings.instCode
+    
+    def pre = "${settings.cloudId}:${settings.instCode}"
+    def encoded = pre.bytes.encodeBase64()
+    
+    def xmlBody = """<Command>
+    <Name>get_current_summation</Name>
+    <MacId>0x${settings.macId}</MacId>
+    <Format>JSON</Format>
+    </Command>"""
+
+    try {
+    
+        def hubAction = new physicalgraph.device.HubAction([
+            method: "POST",
+            path: "/cgi-bin/post_manager",
+            headers: [
+                HOST: address,
+                "authorization": "Basic $encoded",
+                "Content-Type": "application/xml"
+            ],
+            body: xmlBody],
+            device.deviceNetworkId,
+            [callback: getCurrentSummationCallback]
+        )
+        //log.debug "hubAction"
+        //log.trace hubAction
+        log.debug "sending get_current_summation request"
+        sendHubCommand(hubAction)
+    }
+    catch (Exception e) {
+        log.debug "Hit Exception $e on $hubAction"
+    }
+}
+
 
 // parse events into attributes
 def parse(String description) {
@@ -239,6 +301,24 @@ public addGetPriceData(json) {
     
     sendEvent(name: "price", value: priceValue.round(1))
 
+    getCurrentSummation()
+
+}
+
+public addGetCurrentSummationData(json) {
+
+	log.trace "Adding data from Eagle for get_current_summation"
+
+    def data = json.CurrentSummation
+    
+    int summationDelivered = convertHexToInt(data.SummationDelivered)
+    int multiplier = convertHexToInt(data.Multiplier)
+    int divisor = convertHexToInt(data.Divisor)
+
+    Double fromGrid = summationDelivered * multiplier / divisor
+
+    log.debug "Current Summation Delivered $fromGrid kWH"
+   
 }
 
 public error() {
