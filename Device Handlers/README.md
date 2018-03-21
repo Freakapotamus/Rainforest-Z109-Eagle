@@ -3,3 +3,4 @@
 requires Rainforest Eagle Service Manager
 
  * Added use of install code for authentication
+ * Added getting pricing data
